@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="..\build\LocationDeco.API.props" />
+</Project>
