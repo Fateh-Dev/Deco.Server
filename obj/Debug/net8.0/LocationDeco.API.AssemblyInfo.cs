@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("LocationDeco.API")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6773ba87acce75920e60e8a04af240b76351a784")]
 [assembly: System.Reflection.AssemblyProductAttribute("LocationDeco.API")]
 [assembly: System.Reflection.AssemblyTitleAttribute("LocationDeco.API")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
