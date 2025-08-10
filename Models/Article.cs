@@ -30,7 +30,7 @@ namespace LocationDeco.API.Models
         public bool IsActive { get; set; } = true;
         
         // Navigation properties
-        [JsonIgnore]
+        // [JsonIgnore]
         public virtual Category Category { get; set; } = null!;
         [JsonIgnore]
         public virtual ICollection<ReservationItem> ReservationItems { get; set; } = new List<ReservationItem>();
