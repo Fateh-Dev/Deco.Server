@@ -56,13 +56,43 @@ namespace LocationDeco.API.Controllers
         [HttpPost]
         public async Task<ActionResult<Article>> PostArticle(Article article)
         {
-            article.CreatedAt = DateTime.UtcNow;
-            article.IsActive = true;
-            
-            _context.Articles.Add(article);
-            await _context.SaveChangesAsync();
+            try
+            {
+                // Log the incoming article data
+                Console.WriteLine($"Received article: {System.Text.Json.JsonSerializer.Serialize(article)}");
 
-            return CreatedAtAction(nameof(GetArticle), new { id = article.Id }, article);
+                // Validate model state
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage);
+                    
+                    Console.WriteLine($"Model validation errors: {string.Join(", ", errors)}");
+                    return BadRequest(new { message = "Validation failed", errors });
+                }
+
+                // Ensure required fields are set
+                article.CreatedAt = DateTime.UtcNow;
+                article.IsActive = true;
+                
+                // Ensure Category exists
+                var categoryExists = await _context.Categories.AnyAsync(c => c.Id == article.CategoryId);
+                if (!categoryExists)
+                {
+                    return BadRequest(new { message = "Invalid CategoryId specified" });
+                }
+                
+                _context.Articles.Add(article);
+                await _context.SaveChangesAsync();
+
+                return CreatedAtAction(nameof(GetArticle), new { id = article.Id }, article);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating article: {ex}");
+                return StatusCode(500, new { message = "An error occurred while creating the article", error = ex.Message });
+            }
         }
 
         // PUT: api/Articles/5

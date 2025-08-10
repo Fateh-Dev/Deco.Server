@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace LocationDeco.API.Models
 {
+    
     public class Article
     {
         public int Id { get; set; }
@@ -31,7 +32,7 @@ namespace LocationDeco.API.Models
         
         // Navigation properties
         // [JsonIgnore]
-        public virtual Category Category { get; set; } = null!;
+        public virtual Category? Category { get; set; } = null!;
         [JsonIgnore]
         public virtual ICollection<ReservationItem> ReservationItems { get; set; } = new List<ReservationItem>();
     }
