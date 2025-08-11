@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using LocationDeco.API.Data;
 using LocationDeco.API.Models;
+using Microsoft.AspNetCore.StaticFiles;
+using System.IO;
+using System.Web;
 
 namespace LocationDeco.API.Controllers
 {
@@ -59,7 +62,7 @@ namespace LocationDeco.API.Controllers
             try
             {
                 // Log the incoming article data
-                Console.WriteLine($"Received article: {System.Text.Json.JsonSerializer.Serialize(article)}");
+                // Console.WriteLine($"Received article: {System.Text.Json.JsonSerializer.Serialize(article)}");
 
                 // Validate model state
                 if (!ModelState.IsValid)
@@ -68,7 +71,7 @@ namespace LocationDeco.API.Controllers
                         .SelectMany(v => v.Errors)
                         .Select(e => e.ErrorMessage);
                     
-                    Console.WriteLine($"Model validation errors: {string.Join(", ", errors)}");
+                    // Console.WriteLine($"Model validation errors: {string.Join(", ", errors)}");
                     return BadRequest(new { message = "Validation failed", errors });
                 }
 
@@ -90,7 +93,7 @@ namespace LocationDeco.API.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error creating article: {ex}");
+                // Console.WriteLine($"Error creating article: {ex}");
                 return StatusCode(500, new { message = "An error occurred while creating the article", error = ex.Message });
             }
         }
@@ -154,6 +157,73 @@ namespace LocationDeco.API.Controllers
         private bool ArticleExists(int id)
         {
             return _context.Articles.Any(e => e.Id == id && e.IsActive);
+        }
+
+        // POST: api/Articles/upload
+        [HttpPost("upload"), DisableRequestSizeLimit]
+        public async Task<IActionResult> UploadImage()
+        {
+            try
+            {
+                Console.WriteLine("UploadImage endpoint hit");
+                
+                if (Request.Form.Files == null || Request.Form.Files.Count == 0)
+                {
+                    Console.WriteLine("No files found in the request");
+                    return BadRequest(new { message = "No file was uploaded" });
+                }
+
+                var file = Request.Form.Files[0];
+                if (file == null || file.Length == 0)
+                {
+                    Console.WriteLine("File is empty or null");
+                    return BadRequest(new { message = "The uploaded file is empty" });
+                }
+
+                Console.WriteLine($"Received file: {file.FileName}, Size: {file.Length} bytes");
+
+                // Validate file type
+                var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
+                var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
+                {
+                    Console.WriteLine($"Invalid file extension: {extension}");
+                    return BadRequest(new { message = "Invalid file type. Only JPG, JPEG, PNG, and GIF are allowed." });
+                }
+
+                // Create a unique file name
+                var fileName = $"{Guid.NewGuid()}{extension}";
+                var imagesPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "articles");
+                
+                // Ensure the directory exists
+                if (!Directory.Exists(imagesPath))
+                {
+                    Console.WriteLine($"Creating directory: {imagesPath}");
+                    Directory.CreateDirectory(imagesPath);
+                }
+                
+                var filePath = Path.Combine(imagesPath, fileName);
+                Console.WriteLine($"Saving file to: {filePath}");
+
+                // Save the file
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                // Return the file URL
+                var fileUrl = $"/images/articles/{fileName}";
+                var fullUrl = $"{Request.Scheme}://{Request.Host}{fileUrl}";
+                Console.WriteLine($"File uploaded successfully. URL: {fileUrl}");
+                return Ok(new { 
+                    fileUrl = fileUrl,
+                    fullUrl = fullUrl
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Internal server error: {ex.Message}");
+            }
         }
     }
 }

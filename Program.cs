@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using LocationDeco.API.Data;
+using Microsoft.Extensions.FileProviders;
+using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,15 +14,16 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Add CORS for Angular frontend
+// Add CORS for development
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAngularApp",
-        policy =>
+    options.AddPolicy("AllowAllForDevelopment",
+        builder =>
         {
-            policy.WithOrigins("http://localhost:4200")
-                  .AllowAnyHeader()
-                  .AllowAnyMethod();
+            builder.AllowAnyOrigin()
+                   .AllowAnyMethod()
+                   .AllowAnyHeader()
+                   .WithExposedHeaders("Content-Disposition");
         });
 });
 
@@ -36,7 +39,44 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 // Use CORS
-app.UseCors("AllowAngularApp");
+app.UseCors("AllowAllForDevelopment");
+
+// Set up wwwroot path and ensure it exists
+var wwwrootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+if (!Directory.Exists(wwwrootPath))
+{
+    Directory.CreateDirectory(wwwrootPath);
+}
+
+// Set up images path and ensure it exists
+var imagesPath = Path.Combine(wwwrootPath, "images", "articles");
+if (!Directory.Exists(imagesPath))
+{
+    Directory.CreateDirectory(imagesPath);
+}
+
+// Enable serving of all static files from wwwroot
+app.UseStaticFiles();
+
+// Add a specific mapping for /images/articles to serve from the images directory
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(imagesPath),
+    RequestPath = "/images/articles",
+    ServeUnknownFileTypes = true // This ensures all file types are served
+});
+
+// Add a catch-all route to help debug static file serving
+app.MapGet("/debug/files", () => 
+{
+    var files = Directory.GetFiles(imagesPath, "*.*", SearchOption.AllDirectories)
+        .Select(f => new 
+        { 
+            Path = f.Replace(imagesPath, "").Replace("\\", "/"),
+            Exists = true
+        });
+    return Results.Ok(files);
+});
 
 app.UseAuthorization();
 
