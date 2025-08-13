@@ -104,19 +104,21 @@ namespace LocationDeco.API.Controllers
         {
             if (id != article.Id)
             {
-                return BadRequest();
+                return BadRequest("ID in the URL does not match the article ID.");
             }
 
             var existingArticle = await _context.Articles.FindAsync(id);
             if (existingArticle == null || !existingArticle.IsActive)
             {
-                return NotFound();
+                return NotFound("Article not found or is inactive.");
             }
 
-            article.CreatedAt = existingArticle.CreatedAt;
-            article.IsActive = true;
-
+            // Update the existing entity with the new values
             _context.Entry(existingArticle).CurrentValues.SetValues(article);
+            
+            // Ensure these properties are not overwritten
+            existingArticle.CreatedAt = existingArticle.CreatedAt;
+            existingArticle.IsActive = true;
 
             try
             {
@@ -158,7 +160,7 @@ namespace LocationDeco.API.Controllers
         {
             return _context.Articles.Any(e => e.Id == id && e.IsActive);
         }
-
+ 
         // POST: api/Articles/upload
         [HttpPost("upload"), DisableRequestSizeLimit]
         public async Task<IActionResult> UploadImage()
