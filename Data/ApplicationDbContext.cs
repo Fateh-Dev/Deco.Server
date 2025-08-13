@@ -11,6 +11,7 @@ namespace LocationDeco.API.Data
         }
 
         public DbSet<User> Users { get; set; }
+        public DbSet<Client> Clients { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<Article> Articles { get; set; }
         public DbSet<Reservation> Reservations { get; set; }
@@ -28,8 +29,50 @@ namespace LocationDeco.API.Data
                 entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.Phone).IsRequired().HasMaxLength(20);
                 entity.Property(e => e.Email).HasMaxLength(100);
+            });
+
+            // Configure Client entity
+            modelBuilder.Entity<Client>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Phone).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.Email).HasMaxLength(100);
+                entity.Property(e => e.EventType).HasMaxLength(50);
+                entity.Property(e => e.Address).HasMaxLength(500);
+                entity.Property(e => e.CompanyName).HasMaxLength(200);
                 entity.Property(e => e.EventType).HasMaxLength(50);
                 entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                // Configure one-to-many relationship with Reservation
+                entity.HasMany(c => c.Reservations)
+                    .WithOne(r => r.Client)
+                    .HasForeignKey(r => r.ClientId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // Configure Reservation entity
+            modelBuilder.Entity<Reservation>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.StartDate).IsRequired();
+                entity.Property(e => e.EndDate).IsRequired();
+                entity.Property(e => e.Status).HasDefaultValue(ReservationStatus.EnAttente);
+                entity.Property(e => e.TotalPrice).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+                entity.Property(e => e.IsActive).HasDefaultValue(true);
+
+                // Configure one-to-many relationship with ReservationItem
+                entity.HasMany(r => r.ReservationItems)
+                    .WithOne(ri => ri.Reservation)
+                    .HasForeignKey(ri => ri.ReservationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Configure one-to-many relationship with Payment
+                entity.HasMany(r => r.Payments)
+                    .WithOne(p => p.Reservation)
+                    .HasForeignKey(p => p.ReservationId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             // Configure Category entity
@@ -64,9 +107,9 @@ namespace LocationDeco.API.Data
                 entity.Property(e => e.Status).HasConversion<string>();
                 entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
                 
-                entity.HasOne(e => e.User)
-                    .WithMany(u => u.Reservations)
-                    .HasForeignKey(e => e.UserId)
+                entity.HasOne(e => e.Client)
+                    .WithMany(c => c.Reservations)
+                    .HasForeignKey(e => e.ClientId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
@@ -178,9 +221,9 @@ namespace LocationDeco.API.Data
                 }
             );
 
-            // Seed Sample User
-            modelBuilder.Entity<User>().HasData(
-                new User
+            // Seed Sample Client
+            modelBuilder.Entity<Client>().HasData(
+                new Client
                 {
                     Id = 1,
                     Name = "Marie Dupont",

@@ -16,7 +16,7 @@ namespace LocationDeco.API.Models
     {
         public int Id { get; set; }
         
-        public int UserId { get; set; }
+        public int ClientId { get; set; }
         
         [Required]
         public DateTime StartDate { get; set; }
@@ -35,7 +35,7 @@ namespace LocationDeco.API.Models
         
         // Navigation properties
         [JsonIgnore]
-        public virtual User User { get; set; } = null!;
+        public Client? Client { get; set; } = null!;
         [JsonIgnore]
         public virtual ICollection<ReservationItem> ReservationItems { get; set; } = new List<ReservationItem>();
         [JsonIgnore]

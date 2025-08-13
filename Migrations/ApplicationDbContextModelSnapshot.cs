@@ -197,6 +197,63 @@ namespace LocationDeco.API.Migrations
                         });
                 });
 
+            modelBuilder.Entity("LocationDeco.API.Models.Client", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CompanyName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Clients");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "marie.dupont@email.com",
+                            EventType = "Mariage",
+                            IsActive = true,
+                            Name = "Marie Dupont",
+                            Phone = "+33 6 12 34 56 78"
+                        });
+                });
+
             modelBuilder.Entity("LocationDeco.API.Models.Payment", b =>
                 {
                     b.Property<int>("Id")
@@ -239,6 +296,9 @@ namespace LocationDeco.API.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("ClientId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT")
@@ -248,24 +308,25 @@ namespace LocationDeco.API.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("EnAttente");
 
                     b.Property<decimal>("TotalPrice")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<int>("UserId")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("ClientId");
 
                     b.ToTable("Reservations");
                 });
@@ -309,16 +370,10 @@ namespace LocationDeco.API.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Email")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EventType")
-                        .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsActive")
@@ -337,18 +392,6 @@ namespace LocationDeco.API.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Users");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            CreatedAt = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Email = "marie.dupont@email.com",
-                            EventType = "Mariage",
-                            IsActive = true,
-                            Name = "Marie Dupont",
-                            Phone = "+33 6 12 34 56 78"
-                        });
                 });
 
             modelBuilder.Entity("LocationDeco.API.Models.Article", b =>
@@ -375,13 +418,13 @@ namespace LocationDeco.API.Migrations
 
             modelBuilder.Entity("LocationDeco.API.Models.Reservation", b =>
                 {
-                    b.HasOne("LocationDeco.API.Models.User", "User")
+                    b.HasOne("LocationDeco.API.Models.Client", "Client")
                         .WithMany("Reservations")
-                        .HasForeignKey("UserId")
+                        .HasForeignKey("ClientId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("User");
+                    b.Navigation("Client");
                 });
 
             modelBuilder.Entity("LocationDeco.API.Models.ReservationItem", b =>
@@ -413,16 +456,16 @@ namespace LocationDeco.API.Migrations
                     b.Navigation("Articles");
                 });
 
+            modelBuilder.Entity("LocationDeco.API.Models.Client", b =>
+                {
+                    b.Navigation("Reservations");
+                });
+
             modelBuilder.Entity("LocationDeco.API.Models.Reservation", b =>
                 {
                     b.Navigation("Payments");
 
                     b.Navigation("ReservationItems");
-                });
-
-            modelBuilder.Entity("LocationDeco.API.Models.User", b =>
-                {
-                    b.Navigation("Reservations");
                 });
 #pragma warning restore 612, 618
         }

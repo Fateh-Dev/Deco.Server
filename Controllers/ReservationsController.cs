@@ -21,7 +21,7 @@ namespace LocationDeco.API.Controllers
         public async Task<ActionResult<IEnumerable<Reservation>>> GetReservations()
         {
             return await _context.Reservations
-                .Include(r => r.User)
+                .Include(r => r.Client)
                 .Include(r => r.ReservationItems)
                     .ThenInclude(ri => ri.Article)
                         .ThenInclude(a => a.Category)
@@ -34,7 +34,7 @@ namespace LocationDeco.API.Controllers
         public async Task<ActionResult<Reservation>> GetReservation(int id)
         {
             var reservation = await _context.Reservations
-                .Include(r => r.User)
+                .Include(r => r.Client)
                 .Include(r => r.ReservationItems)
                     .ThenInclude(ri => ri.Article)
                         .ThenInclude(a => a.Category)
@@ -49,14 +49,15 @@ namespace LocationDeco.API.Controllers
             return reservation;
         }
 
-        // GET: api/Reservations/user/5
-        [HttpGet("user/{userId}")]
-        public async Task<ActionResult<IEnumerable<Reservation>>> GetReservationsByUser(int userId)
+        // GET: api/Reservations/client/5
+        [HttpGet("client/{clientId}")]
+        public async Task<ActionResult<IEnumerable<Reservation>>> GetReservationsByClient(int clientId)
         {
             return await _context.Reservations
+                        .Include(r => r.Client)
                 .Include(r => r.ReservationItems)
                     .ThenInclude(ri => ri.Article)
-                .Where(r => r.UserId == userId && r.IsActive)
+                .Where(r => r.ClientId == clientId && r.IsActive)
                 .ToListAsync();
         }
 

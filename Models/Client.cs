@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace LocationDeco.API.Models
 {
-    public class User
+    public class Client
     {
         public int Id { get; set; }
         
@@ -19,8 +19,22 @@ namespace LocationDeco.API.Models
         [StringLength(100)]
         public string? Email { get; set; }
         
+        [StringLength(50)]
+        public string? EventType { get; set; }
+        
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         
         public bool IsActive { get; set; } = true;
+        
+        // Additional client-specific properties can be added here
+        [StringLength(500)]
+        public string? Address { get; set; }
+        
+        [StringLength(200)]
+        public string? CompanyName { get; set; }
+        
+        // Navigation properties
+        [JsonIgnore]
+        public ICollection<Reservation> Reservations { get; set; } = new List<Reservation>();
     }
 }
