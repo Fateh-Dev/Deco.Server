@@ -17,12 +17,50 @@ namespace LocationDeco.API.Controllers
         }
 
         // GET: api/Client
+        // Now supports search with query parameters
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Client>>> GetClients()
+        public async Task<ActionResult<IEnumerable<Client>>> GetClients([FromQuery] string? search = null)
         {
-            return await _context.Clients
-                .Where(c => c.IsActive)
+            var query = _context.Clients.Where(c => c.IsActive);
+
+            // Apply search filter if search term is provided
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var searchTerm = search.Trim().ToLower();
+                query = query.Where(c => 
+                    c.Name.ToLower().Contains(searchTerm) ||
+                    (c.Phone != null && c.Phone.ToLower().Contains(searchTerm)) ||
+                    (c.Email != null && c.Email.ToLower().Contains(searchTerm)) ||
+                    (c.CompanyName != null && c.CompanyName.ToLower().Contains(searchTerm)) ||
+                    (c.Address != null && c.Address.ToLower().Contains(searchTerm))
+                );
+            }
+
+            return await query.OrderBy(c => c.Name).ToListAsync();
+        } 
+
+        // GET: api/Client/search/{term} - Alternative search endpoint
+        [HttpGet("search/{term}")]
+        public async Task<ActionResult<IEnumerable<Client>>> SearchClients(string term)
+        {
+            if (string.IsNullOrWhiteSpace(term))
+            {
+                return await GetClients();
+            }
+
+            var searchTerm = term.Trim().ToLower();
+            var clients = await _context.Clients
+                .Where(c => c.IsActive && (
+                    c.Name.ToLower().Contains(searchTerm) ||
+                    (c.Phone != null && c.Phone.ToLower().Contains(searchTerm)) ||
+                    (c.Email != null && c.Email.ToLower().Contains(searchTerm)) ||
+                    (c.CompanyName != null && c.CompanyName.ToLower().Contains(searchTerm)) ||
+                    (c.Address != null && c.Address.ToLower().Contains(searchTerm))
+                ))
+                .OrderBy(c => c.Name)
                 .ToListAsync();
+
+            return clients;
         }
 
         // GET: api/Client/5
