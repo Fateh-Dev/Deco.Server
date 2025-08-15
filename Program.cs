@@ -1,120 +1,114 @@
 using Microsoft.EntityFrameworkCore;
 using LocationDeco.API.Data;
 using Microsoft.Extensions.FileProviders;
-using System.IO;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// 1️⃣ Load Connection String and Validate
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException("❌ DefaultConnection string is missing in configuration.");
+}
+
+// 2️⃣ EF Core + SQLite
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlite(connectionString));
+
+// 3️⃣ Controllers + Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-// Configure Swagger only in Development
 if (builder.Environment.IsDevelopment())
 {
     builder.Services.AddSwaggerGen();
 }
 
-// Add health checks
+// 4️⃣ Health Checks
 builder.Services.AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["ready"]);
 
-// Add Entity Framework with SQLite
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-// Add CORS for development
+// 5️⃣ CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAllForDevelopment",
-        builder =>
-        {
-            builder.AllowAnyOrigin()
-                   .AllowAnyMethod()
-                   .AllowAnyHeader()
-                   .WithExposedHeaders("Content-Disposition");
-        });
+    options.AddPolicy("AllowAllForDevelopment", cors =>
+    {
+        cors.AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .WithExposedHeaders("Content-Disposition");
+    });
 });
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// 6️⃣ Swagger UI in Dev
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
+// 7️⃣ HTTPS + CORS
 app.UseHttpsRedirection();
-
-// Use CORS
 app.UseCors("AllowAllForDevelopment");
 
-// Set up wwwroot path and ensure it exists
+// 8️⃣ Ensure Static File Directories Exist
 var wwwrootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-if (!Directory.Exists(wwwrootPath))
-{
-    Directory.CreateDirectory(wwwrootPath);
-}
+Directory.CreateDirectory(wwwrootPath);
 
-// Set up images path and ensure it exists
 var imagesPath = Path.Combine(wwwrootPath, "images", "articles");
-if (!Directory.Exists(imagesPath))
-{
-    Directory.CreateDirectory(imagesPath);
-}
+Directory.CreateDirectory(imagesPath);
 
-// Enable serving of all static files from wwwroot
+// 9️⃣ Serve Static Files
 app.UseStaticFiles();
-
-// Add a specific mapping for /images/articles to serve from the images directory
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(imagesPath),
     RequestPath = "/images/articles",
-    ServeUnknownFileTypes = true // This ensures all file types are served
+    ServeUnknownFileTypes = true
 });
 
-// Add a catch-all route to help debug static file serving
-app.MapGet("/debug/files", () => 
+// 🔍 Debug Static Files (optional)
+app.MapGet("/debug/files", () =>
 {
     var files = Directory.GetFiles(imagesPath, "*.*", SearchOption.AllDirectories)
-        .Select(f => new 
-        { 
+        .Select(f => new
+        {
             Path = f.Replace(imagesPath, "").Replace("\\", "/"),
             Exists = true
         });
     return Results.Ok(files);
 });
 
+// 🔑 Auth
 app.UseAuthorization();
 
+// 1️⃣0️⃣ Controllers
 app.MapControllers();
 
-// Add health check endpoint
+// 1️⃣1️⃣ Health Check
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
     Predicate = r => r.Tags.Contains("ready")
 });
 
-// Simple health check endpoint for Render
-app.MapGet("/", () => "LocationDeco API is running!");
+// 1️⃣2️⃣ DB Info for Debug
+var dbFilePath = connectionString.Replace("Data Source=", "");
+var absolutePath = Path.GetFullPath(dbFilePath);
+Console.WriteLine($"📂 SQLite DB path: {absolutePath}");
 
-// Apply database migrations and ensure database is created
+// 1️⃣3️⃣ Serve Angular SPA
+app.MapFallbackToFile("index.html");
+
+// 1️⃣4️⃣ Apply EF Core Migrations on Startup
 using (var scope = app.Services.CreateScope())
 {
-    try
-    {
-        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        context.Database.Migrate();
-    }
-    catch (Exception ex)
-    {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while migrating the database.");
-    }
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    db.Database.Migrate();
 }
 
 app.Run();
