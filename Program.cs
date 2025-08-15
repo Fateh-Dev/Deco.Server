@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using LocationDeco.API.Data;
 using Microsoft.Extensions.FileProviders;
 using System.IO;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +11,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Add health checks
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["ready"]);
 
 // Add Entity Framework with SQLite
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -82,11 +88,28 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Ensure database is created
+// Add health check endpoint
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = r => r.Tags.Contains("ready")
+});
+
+// Simple health check endpoint for Railway
+app.MapGet("/", () => "LocationDeco API is running!");
+
+// Ensure database is created and apply migrations
 using (var scope = app.Services.CreateScope())
 {
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    context.Database.EnsureCreated();
+    try
+    {
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        context.Database.Migrate();
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred while migrating or initializing the database.");
+    }
 }
 
 app.Run();
