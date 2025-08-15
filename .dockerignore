@@ -19,14 +19,3 @@
 **/*.userprefs
 **/*.lock.json
 **/TestResults
-**/Migrations/*.Designer.cs
-**/Migrations/*.sqlite
-**/Migrations/*.sqlite3
-**/Migrations/*.sql
-**/appsettings.Development.json
-**/appsettings.*.json
-!**/appsettings.json
-**/wwwroot/**/*.tmp
-**/wwwroot/**/*.temp
-**/wwwroot/images/**/*
-!**/wwwroot/images/
