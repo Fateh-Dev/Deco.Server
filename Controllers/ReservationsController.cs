@@ -20,13 +20,22 @@ namespace LocationDeco.API.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Reservation>>> GetReservations()
         {
-            return await _context.Reservations
+            var reservations = await _context.Reservations
                 .Include(r => r.Client)
                 .Include(r => r.ReservationItems)
                     .ThenInclude(ri => ri.Article)
                         .ThenInclude(a => a.Category)
                 .Where(r => r.IsActive)
                 .ToListAsync();
+
+            // Debug: Log all reservations
+            Console.WriteLine($"Total reservations found: {reservations.Count}");
+            foreach (var r in reservations)
+            {
+                Console.WriteLine($"  ID: {r.Id}, Client: {r.ClientId}, Start: {r.StartDate:yyyy-MM-dd}, End: {r.EndDate:yyyy-MM-dd}, Status: {r.Status}, IsActive: {r.IsActive}");
+            }
+
+            return reservations;
         }
 
         // GET: api/Reservations/5
@@ -91,11 +100,11 @@ namespace LocationDeco.API.Controllers
                     // Check availability
                     var days = (reservation.EndDate - reservation.StartDate).Days;
                     var totalNeeded = item.Quantity * days;
-                    
+
                     // Check if enough quantity is available for the date range
                     var reservedQuantity = await _context.ReservationItems
                         .Where(ri => ri.ArticleId == item.ArticleId)
-                        .Where(ri => ri.Reservation.StartDate <= reservation.EndDate && 
+                        .Where(ri => ri.Reservation.StartDate <= reservation.EndDate &&
                                    ri.Reservation.EndDate >= reservation.StartDate &&
                                    ri.Reservation.Status != ReservationStatus.Annulee &&
                                    ri.Reservation.IsActive)
@@ -172,15 +181,181 @@ namespace LocationDeco.API.Controllers
             }
 
             reservation.IsActive = false;
-            
+
             await _context.SaveChangesAsync();
 
             return NoContent();
+        }
+        // GET: api/Reservations/calendar/{year}/{month}
+        [HttpGet("calendar/{year}/{month}")]
+        public async Task<ActionResult<object>> GetCalendarData(int year, int month)
+        {
+            var startDate = new DateTime(year, month, 1);
+            var endDate = startDate.AddMonths(1).AddDays(-1);
+
+            // Debug: Log the date range we're searching for
+            Console.WriteLine($"Searching for reservations between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}");
+
+            var reservations = await _context.Reservations
+                .Include(r => r.Client)
+                .Include(r => r.ReservationItems)
+                    .ThenInclude(ri => ri.Article)
+                .Where(r => r.IsActive &&
+                           (r.StartDate.Date <= endDate.Date && r.EndDate.Date >= startDate.Date))
+                .ToListAsync();
+
+            // Debug: Log found reservations
+            Console.WriteLine($"Found {reservations.Count} reservations:");
+            foreach (var r in reservations)
+            {
+                Console.WriteLine($"  ID: {r.Id}, Client: {r.ClientId}, Start: {r.StartDate:yyyy-MM-dd HH:mm:ss}, End: {r.EndDate:yyyy-MM-dd HH:mm:ss}, Status: {r.Status}");
+            }
+
+            var calendarData = new List<object>();
+            var currentDate = startDate;
+
+            while (currentDate <= endDate)
+            {
+                var dayReservations = reservations.Where(r =>
+                    currentDate.Date >= r.StartDate.Date && currentDate.Date <= r.EndDate.Date).ToList();
+
+                var dayRevenue = dayReservations
+                    .Where(r => r.Status != ReservationStatus.Annulee)
+                    .Sum(r =>
+                    {
+                        var days = Math.Max(1, (r.EndDate.Date - r.StartDate.Date).Days + 1);
+                        return (decimal)r.TotalPrice / days;
+                    });
+
+                calendarData.Add(new
+                {
+                    date = currentDate.ToString("yyyy-MM-dd"),
+                    day = currentDate.Day,
+                    isCurrentMonth = true,
+                    isToday = currentDate.Date == DateTime.Today,
+                    isWeekend = currentDate.DayOfWeek == DayOfWeek.Saturday || currentDate.DayOfWeek == DayOfWeek.Sunday,
+                    reservations = dayReservations.Select(r => new
+                    {
+                        id = r.Id,
+                        clientId = r.ClientId,
+                        clientName = r.Client?.Name,
+                        startDate = r.StartDate.ToString("yyyy-MM-dd"),
+                        endDate = r.EndDate.ToString("yyyy-MM-dd"),
+                        totalPrice = r.TotalPrice,
+                        status = r.Status.ToString(),
+                        statusLabel = GetStatusLabel(r.Status)
+                    }).ToList(),
+                    hasReservations = dayReservations.Any(),
+                    revenue = Math.Round(dayRevenue, 2)
+                });
+
+                currentDate = currentDate.AddDays(1);
+            }
+
+            return Ok(new
+            {
+                year = year,
+                month = month,
+                monthName = GetMonthName(month),
+                days = calendarData
+            });
+        }
+        private string GetStatusLabel(ReservationStatus status)
+        {
+            return status switch
+            {
+                ReservationStatus.EnAttente => "En attente",
+                ReservationStatus.Confirmee => "Confirmée",
+                ReservationStatus.Annulee => "Annulée",
+                ReservationStatus.Terminee => "Terminée",
+                _ => status.ToString()
+            };
+        }
+
+        private string GetMonthName(int month)
+        {
+            return month switch
+            {
+                1 => "Janvier",
+                2 => "Février",
+                3 => "Mars",
+                4 => "Avril",
+                5 => "Mai",
+                6 => "Juin",
+                7 => "Juillet",
+                8 => "Août",
+                9 => "Septembre",
+                10 => "Octobre",
+                11 => "Novembre",
+                12 => "Décembre",
+                _ => "Mois inconnu"
+            };
         }
 
         private bool ReservationExists(int id)
         {
             return _context.Reservations.Any(e => e.Id == id && e.IsActive);
+        }
+
+        // GET: api/Reservations/debug/test
+        [HttpGet("debug/test")]
+        public async Task<ActionResult<object>> DebugTest()
+        {
+            // Test 1: Get all reservations
+            var allReservations = await _context.Reservations.ToListAsync();
+
+            // Test 2: Get specific reservation by ID
+            var reservation1 = await _context.Reservations.FirstOrDefaultAsync(r => r.Id == 1);
+
+            // Test 3: Get client
+            var client51 = await _context.Clients.FirstOrDefaultAsync(c => c.Id == 51);
+
+            // Test 4: Check August 2025 reservations
+            var august2025Start = new DateTime(2025, 8, 1);
+            var august2025End = new DateTime(2025, 8, 31);
+            var augustReservations = await _context.Reservations
+                .Where(r => r.IsActive &&
+                           ((r.StartDate >= august2025Start && r.StartDate <= august2025End) ||
+                            (r.EndDate >= august2025Start && r.EndDate <= august2025End) ||
+                            (r.StartDate <= august2025Start && r.EndDate >= august2025End)))
+                .ToListAsync();
+
+            return Ok(new
+            {
+                totalReservations = allReservations.Count,
+                allReservations = allReservations.Select(r => new
+                {
+                    id = r.Id,
+                    clientId = r.ClientId,
+                    startDate = r.StartDate.ToString("yyyy-MM-dd"),
+                    endDate = r.EndDate.ToString("yyyy-MM-dd"),
+                    status = r.Status.ToString(),
+                    isActive = r.IsActive
+                }),
+                reservation1 = reservation1 != null ? new
+                {
+                    id = reservation1.Id,
+                    clientId = reservation1.ClientId,
+                    startDate = reservation1.StartDate.ToString("yyyy-MM-dd"),
+                    endDate = reservation1.EndDate.ToString("yyyy-MM-dd"),
+                    status = reservation1.Status.ToString(),
+                    isActive = reservation1.IsActive
+                } : null,
+                client51 = client51 != null ? new
+                {
+                    id = client51.Id,
+                    name = client51.Name
+                } : null,
+                augustReservations = augustReservations.Select(r => new
+                {
+                    id = r.Id,
+                    clientId = r.ClientId,
+                    startDate = r.StartDate.ToString("yyyy-MM-dd"),
+                    endDate = r.EndDate.ToString("yyyy-MM-dd"),
+                    status = r.Status.ToString(),
+                    isActive = r.IsActive
+                })
+            });
         }
     }
 }
