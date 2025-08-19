@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using LocationDeco.API.Data;
 using LocationDeco.API.Models;
+using LocationDeco.API.DTOs;
 
 namespace LocationDeco.API.Controllers
 {
@@ -18,29 +19,24 @@ namespace LocationDeco.API.Controllers
 
         // GET: api/Reservations
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Reservation>>> GetReservations()
+        public async Task<ActionResult<IEnumerable<ReservationDto>>> GetReservations()
         {
             var reservations = await _context.Reservations
                 .Include(r => r.Client)
                 .Include(r => r.ReservationItems)
                     .ThenInclude(ri => ri.Article)
                         .ThenInclude(a => a.Category)
+                .Include(r => r.Payments)
                 .Where(r => r.IsActive)
                 .ToListAsync();
 
-            // Debug: Log all reservations
-            Console.WriteLine($"Total reservations found: {reservations.Count}");
-            foreach (var r in reservations)
-            {
-                Console.WriteLine($"  ID: {r.Id}, Client: {r.ClientId}, Start: {r.StartDate:yyyy-MM-dd}, End: {r.EndDate:yyyy-MM-dd}, Status: {r.Status}, IsActive: {r.IsActive}");
-            }
-
-            return reservations;
+            var reservationDtos = reservations.Select(r => MapToDto(r)).ToList();
+            return Ok(reservationDtos);
         }
 
         // GET: api/Reservations/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<Reservation>> GetReservation(int id)
+        public async Task<ActionResult<ReservationDto>> GetReservation(int id)
         {
             var reservation = await _context.Reservations
                 .Include(r => r.Client)
@@ -55,27 +51,34 @@ namespace LocationDeco.API.Controllers
                 return NotFound();
             }
 
-            return reservation;
+            var reservationDto = MapToDto(reservation);
+            return Ok(reservationDto);
         }
 
         // GET: api/Reservations/client/5
         [HttpGet("client/{clientId}")]
-        public async Task<ActionResult<IEnumerable<Reservation>>> GetReservationsByClient(int clientId)
+        public async Task<ActionResult<IEnumerable<ReservationDto>>> GetReservationsByClient(int clientId)
         {
-            return await _context.Reservations
-                        .Include(r => r.Client)
+            var reservations = await _context.Reservations
+                .Include(r => r.Client)
                 .Include(r => r.ReservationItems)
                     .ThenInclude(ri => ri.Article)
+                        .ThenInclude(a => a.Category)
+                .Include(r => r.Payments)
                 .Where(r => r.ClientId == clientId && r.IsActive)
                 .ToListAsync();
+
+            var reservationDtos = reservations.Select(r => MapToDto(r)).ToList();
+            return Ok(reservationDtos);
         }
 
         // POST: api/Reservations
         [HttpPost]
-        public async Task<ActionResult<Reservation>> PostReservation(Reservation reservation)
+        public async Task<ActionResult<ReservationDto>> PostReservation(ReservationCreateDto reservation)
         {
+
             // Validate reservation dates
-            if (reservation.StartDate >= reservation.EndDate)
+            if (reservation.StartDate > reservation.EndDate)
             {
                 return BadRequest("Start date must be before end date");
             }
@@ -89,6 +92,9 @@ namespace LocationDeco.API.Controllers
             decimal totalPrice = 0;
             if (reservation.ReservationItems != null && reservation.ReservationItems.Any())
             {
+                var days = (reservation.EndDate - reservation.StartDate).Days + 1;
+                if (days == 0) days = 1; // Minimum 1 day
+
                 foreach (var item in reservation.ReservationItems)
                 {
                     var article = await _context.Articles.FindAsync(item.ArticleId);
@@ -98,10 +104,6 @@ namespace LocationDeco.API.Controllers
                     }
 
                     // Check availability
-                    var days = (reservation.EndDate - reservation.StartDate).Days;
-                    var totalNeeded = item.Quantity * days;
-
-                    // Check if enough quantity is available for the date range
                     var reservedQuantity = await _context.ReservationItems
                         .Where(ri => ri.ArticleId == item.ArticleId)
                         .Where(ri => ri.Reservation.StartDate <= reservation.EndDate &&
@@ -121,15 +123,47 @@ namespace LocationDeco.API.Controllers
                 }
             }
 
-            reservation.TotalPrice = totalPrice;
-            reservation.Status = ReservationStatus.EnAttente;
-            reservation.CreatedAt = DateTime.UtcNow;
-            reservation.IsActive = true;
+            var reservationEntity = new Reservation();
+            reservationEntity.ClientId = reservation.ClientId;
+            reservationEntity.StartDate = reservation.StartDate;
+            reservationEntity.EndDate = reservation.EndDate;
+            reservationEntity.TotalPrice = totalPrice;
+            reservationEntity.Status = ReservationStatus.EnAttente;
+            reservationEntity.CreatedAt = DateTime.UtcNow;
+            reservationEntity.IsActive = true;
 
-            _context.Reservations.Add(reservation);
+            _context.Reservations.Add(reservationEntity);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetReservation), new { id = reservation.Id }, reservation);
+            // Create ReservationItems in the database
+            if (reservation.ReservationItems != null && reservation.ReservationItems.Any())
+            {
+                foreach (var item in reservation.ReservationItems)
+                {
+                    var reservationItemEntity = new ReservationItem
+                    {
+                        ReservationId = reservationEntity.Id,
+                        ArticleId = item.ArticleId,
+                        Quantity = item.Quantity,
+                        UnitPrice = item.UnitPrice,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.ReservationItems.Add(reservationItemEntity);
+                }
+                await _context.SaveChangesAsync();
+            }
+
+            // Load the complete reservation with all related data
+            var createdReservation = await _context.Reservations
+                .Include(r => r.Client)
+                .Include(r => r.ReservationItems)
+                    .ThenInclude(ri => ri.Article)
+                        .ThenInclude(a => a.Category)
+                .Include(r => r.Payments)
+                .FirstOrDefaultAsync(r => r.Id == reservationEntity.Id);
+
+            var reservationDto = MapToDto(createdReservation!);
+            return CreatedAtAction(nameof(GetReservation), new { id = reservationEntity.Id }, reservationDto);
         }
 
         // PUT: api/Reservations/5
@@ -149,7 +183,6 @@ namespace LocationDeco.API.Controllers
 
             // Only allow status updates for existing reservations
             existingReservation.Status = reservation.Status;
-            existingReservation.IsActive = true;
 
             try
             {
@@ -181,11 +214,11 @@ namespace LocationDeco.API.Controllers
             }
 
             reservation.IsActive = false;
-
             await _context.SaveChangesAsync();
 
             return NoContent();
         }
+
         // GET: api/Reservations/calendar/{year}/{month}
         [HttpGet("calendar/{year}/{month}")]
         public async Task<ActionResult<object>> GetCalendarData(int year, int month)
@@ -193,23 +226,19 @@ namespace LocationDeco.API.Controllers
             var startDate = new DateTime(year, month, 1);
             var endDate = startDate.AddMonths(1).AddDays(-1);
 
-            // Debug: Log the date range we're searching for
-            Console.WriteLine($"Searching for reservations between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}");
-
             var reservations = await _context.Reservations
                 .Include(r => r.Client)
                 .Include(r => r.ReservationItems)
                     .ThenInclude(ri => ri.Article)
+                        .ThenInclude(a => a.Category)
                 .Where(r => r.IsActive &&
                            (r.StartDate.Date <= endDate.Date && r.EndDate.Date >= startDate.Date))
                 .ToListAsync();
 
-            // Debug: Log found reservations
-            Console.WriteLine($"Found {reservations.Count} reservations:");
-            foreach (var r in reservations)
-            {
-                Console.WriteLine($"  ID: {r.Id}, Client: {r.ClientId}, Start: {r.StartDate:yyyy-MM-dd HH:mm:ss}, End: {r.EndDate:yyyy-MM-dd HH:mm:ss}, Status: {r.Status}");
-            }
+            var articlesWithSceneCategory = await _context.Articles
+                .Include(a => a.Category)
+                .Where(a => a.Category != null && a.Category.Name.Contains("scene"))
+                .ToListAsync();
 
             var calendarData = new List<object>();
             var currentDate = startDate;
@@ -246,7 +275,15 @@ namespace LocationDeco.API.Controllers
                         statusLabel = GetStatusLabel(r.Status)
                     }).ToList(),
                     hasReservations = dayReservations.Any(),
-                    revenue = Math.Round(dayRevenue, 2)
+                    revenue = Math.Round(dayRevenue, 2),
+                    articlesWithSceneCategory = articlesWithSceneCategory.Select(a => new
+                    {
+                        id = a.Id,
+                        name = a.Name,
+                        description = a.Description,
+                        pricePerDay = a.PricePerDay,
+                        categoryName = a.Category?.Name
+                    }).ToList()
                 });
 
                 currentDate = currentDate.AddDays(1);
@@ -260,6 +297,142 @@ namespace LocationDeco.API.Controllers
                 days = calendarData
             });
         }
+        private ReservationDto MapToDto_(Reservation reservation)
+        {
+            // Ignore the time component and only consider the date part for the calculation.
+            var startDateOnly = reservation.StartDate.Date;
+            var endDateOnly = reservation.EndDate.Date;
+
+            // Calculate the duration in days.
+            var durationDays = (endDateOnly - startDateOnly).Days + 1;
+
+            // Calculate the total price based on all reservation items.
+            var calculatedTotalPrice = reservation.ReservationItems?
+                .Sum(ri => (ri.Quantity * ri.UnitPrice * durationDays)) ?? 0;
+
+            var dto = new ReservationDto
+            {
+                Id = reservation.Id,
+                ClientId = reservation.ClientId,
+                StartDate = reservation.StartDate,
+                EndDate = reservation.EndDate,
+                Status = reservation.Status,
+                // Use the dynamically calculated total price.
+                TotalPrice = calculatedTotalPrice,
+                CreatedAt = reservation.CreatedAt,
+                IsActive = reservation.IsActive,
+                Client = reservation.Client != null ? new ClientDto
+                {
+                    Id = reservation.Client.Id,
+                    Name = reservation.Client.Name,
+                    Phone = reservation.Client.Phone,
+                    Email = reservation.Client.Email,
+                    Address = reservation.Client.Address
+                } : null,
+                ReservationItems = reservation.ReservationItems?.Select(ri => new ReservationItemDto
+                {
+                    Id = ri.Id,
+                    ReservationId = ri.ReservationId,
+                    ArticleId = ri.ArticleId,
+                    Quantity = ri.Quantity,
+                    UnitPrice = ri.UnitPrice,
+                    // Use the consistent, date-only duration.
+                    DurationDays = durationDays,
+                    CreatedAt = ri.CreatedAt,
+                    Article = ri.Article != null ? new ArticleDto
+                    {
+                        Id = ri.Article.Id,
+                        Name = ri.Article.Name,
+                        Description = ri.Article.Description,
+                        PricePerDay = ri.Article.PricePerDay,
+                        QuantityTotal = ri.Article.QuantityTotal,
+                        Category = ri.Article.Category != null ? new CategoryDto
+                        {
+                            Id = ri.Article.Category.Id,
+                            Name = ri.Article.Category.Name
+                        } : null
+                    } : null
+                }).ToList() ?? new List<ReservationItemDto>(),
+                Payments = reservation.Payments?.Select(p => new PaymentDto
+                {
+                    Id = p.Id,
+                    ReservationId = p.ReservationId,
+                    Amount = p.Amount,
+                    PaymentDate = p.PaymentDate,
+                    Method = p.Method,
+                    Note = p.Note,
+                    CreatedAt = p.CreatedAt
+                }).ToList() ?? new List<PaymentDto>()
+            };
+
+            return dto;
+        }
+        private ReservationDto MapToDto(Reservation reservation)
+        {
+            // Ignore the time component and only consider the date part for the calculation.
+            var startDateOnly = reservation.StartDate.Date;
+            var endDateOnly = reservation.EndDate.Date;
+
+            // Calculate the duration in days.
+            var durationDays = (endDateOnly - startDateOnly).Days + 1;
+
+            var dto = new ReservationDto
+            {
+                Id = reservation.Id,
+                ClientId = reservation.ClientId,
+                StartDate = reservation.StartDate,
+                EndDate = reservation.EndDate,
+                Status = reservation.Status,
+                TotalPrice = reservation.TotalPrice,
+                CreatedAt = reservation.CreatedAt,
+                IsActive = reservation.IsActive,
+                Client = reservation.Client != null ? new ClientDto
+                {
+                    Id = reservation.Client.Id,
+                    Name = reservation.Client.Name,
+                    Phone = reservation.Client.Phone,
+                    Email = reservation.Client.Email,
+                    Address = reservation.Client.Address
+                } : null,
+                ReservationItems = reservation.ReservationItems?.Select(ri => new ReservationItemDto
+                {
+                    Id = ri.Id,
+                    ReservationId = ri.ReservationId,
+                    ArticleId = ri.ArticleId,
+                    Quantity = ri.Quantity,
+                    UnitPrice = ri.UnitPrice,
+                    // Use the consistent, date-only duration.
+                    DurationDays = durationDays,
+                    CreatedAt = ri.CreatedAt,
+                    Article = ri.Article != null ? new ArticleDto
+                    {
+                        Id = ri.Article.Id,
+                        Name = ri.Article.Name,
+                        Description = ri.Article.Description,
+                        PricePerDay = ri.Article.PricePerDay,
+                        QuantityTotal = ri.Article.QuantityTotal,
+                        Category = ri.Article.Category != null ? new CategoryDto
+                        {
+                            Id = ri.Article.Category.Id,
+                            Name = ri.Article.Category.Name
+                        } : null
+                    } : null
+                }).ToList() ?? new List<ReservationItemDto>(),
+                Payments = reservation.Payments?.Select(p => new PaymentDto
+                {
+                    Id = p.Id,
+                    ReservationId = p.ReservationId,
+                    Amount = p.Amount,
+                    PaymentDate = p.PaymentDate,
+                    Method = p.Method,
+                    Note = p.Note,
+                    CreatedAt = p.CreatedAt
+                }).ToList() ?? new List<PaymentDto>()
+            };
+
+            return dto;
+        }
+
         private string GetStatusLabel(ReservationStatus status)
         {
             return status switch
@@ -295,67 +468,6 @@ namespace LocationDeco.API.Controllers
         private bool ReservationExists(int id)
         {
             return _context.Reservations.Any(e => e.Id == id && e.IsActive);
-        }
-
-        // GET: api/Reservations/debug/test
-        [HttpGet("debug/test")]
-        public async Task<ActionResult<object>> DebugTest()
-        {
-            // Test 1: Get all reservations
-            var allReservations = await _context.Reservations.ToListAsync();
-
-            // Test 2: Get specific reservation by ID
-            var reservation1 = await _context.Reservations.FirstOrDefaultAsync(r => r.Id == 1);
-
-            // Test 3: Get client
-            var client51 = await _context.Clients.FirstOrDefaultAsync(c => c.Id == 51);
-
-            // Test 4: Check August 2025 reservations
-            var august2025Start = new DateTime(2025, 8, 1);
-            var august2025End = new DateTime(2025, 8, 31);
-            var augustReservations = await _context.Reservations
-                .Where(r => r.IsActive &&
-                           ((r.StartDate >= august2025Start && r.StartDate <= august2025End) ||
-                            (r.EndDate >= august2025Start && r.EndDate <= august2025End) ||
-                            (r.StartDate <= august2025Start && r.EndDate >= august2025End)))
-                .ToListAsync();
-
-            return Ok(new
-            {
-                totalReservations = allReservations.Count,
-                allReservations = allReservations.Select(r => new
-                {
-                    id = r.Id,
-                    clientId = r.ClientId,
-                    startDate = r.StartDate.ToString("yyyy-MM-dd"),
-                    endDate = r.EndDate.ToString("yyyy-MM-dd"),
-                    status = r.Status.ToString(),
-                    isActive = r.IsActive
-                }),
-                reservation1 = reservation1 != null ? new
-                {
-                    id = reservation1.Id,
-                    clientId = reservation1.ClientId,
-                    startDate = reservation1.StartDate.ToString("yyyy-MM-dd"),
-                    endDate = reservation1.EndDate.ToString("yyyy-MM-dd"),
-                    status = reservation1.Status.ToString(),
-                    isActive = reservation1.IsActive
-                } : null,
-                client51 = client51 != null ? new
-                {
-                    id = client51.Id,
-                    name = client51.Name
-                } : null,
-                augustReservations = augustReservations.Select(r => new
-                {
-                    id = r.Id,
-                    clientId = r.ClientId,
-                    startDate = r.StartDate.ToString("yyyy-MM-dd"),
-                    endDate = r.EndDate.ToString("yyyy-MM-dd"),
-                    status = r.Status.ToString(),
-                    isActive = r.IsActive
-                })
-            });
         }
     }
 }

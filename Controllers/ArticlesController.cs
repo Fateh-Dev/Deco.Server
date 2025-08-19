@@ -4,7 +4,10 @@ using LocationDeco.API.Data;
 using LocationDeco.API.Models;
 using Microsoft.AspNetCore.StaticFiles;
 using System.IO;
-using System.Web;
+using System.Web; 
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
 
 namespace LocationDeco.API.Controllers
 {
@@ -70,7 +73,7 @@ namespace LocationDeco.API.Controllers
                     var errors = ModelState.Values
                         .SelectMany(v => v.Errors)
                         .Select(e => e.ErrorMessage);
-                    
+
                     // Console.WriteLine($"Model validation errors: {string.Join(", ", errors)}");
                     return BadRequest(new { message = "Validation failed", errors });
                 }
@@ -78,14 +81,14 @@ namespace LocationDeco.API.Controllers
                 // Ensure required fields are set
                 article.CreatedAt = DateTime.UtcNow;
                 article.IsActive = true;
-                
+
                 // Ensure Category exists
                 var categoryExists = await _context.Categories.AnyAsync(c => c.Id == article.CategoryId);
                 if (!categoryExists)
                 {
                     return BadRequest(new { message = "Invalid CategoryId specified" });
                 }
-                
+
                 _context.Articles.Add(article);
                 await _context.SaveChangesAsync();
 
@@ -115,7 +118,7 @@ namespace LocationDeco.API.Controllers
 
             // Update the existing entity with the new values
             _context.Entry(existingArticle).CurrentValues.SetValues(article);
-            
+
             // Ensure these properties are not overwritten
             existingArticle.CreatedAt = existingArticle.CreatedAt;
             existingArticle.IsActive = true;
@@ -150,7 +153,7 @@ namespace LocationDeco.API.Controllers
             }
 
             article.IsActive = false;
-            
+
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -167,57 +170,67 @@ namespace LocationDeco.API.Controllers
         {
             try
             {
-                Console.WriteLine("UploadImage endpoint hit");
-                
                 if (Request.Form.Files == null || Request.Form.Files.Count == 0)
                 {
-                    Console.WriteLine("No files found in the request");
                     return BadRequest(new { message = "No file was uploaded" });
                 }
 
                 var file = Request.Form.Files[0];
                 if (file == null || file.Length == 0)
                 {
-                    Console.WriteLine("File is empty or null");
                     return BadRequest(new { message = "The uploaded file is empty" });
                 }
 
-                Console.WriteLine($"Received file: {file.FileName}, Size: {file.Length} bytes");
-
-                // Validate file type
                 var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
                 var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
                 if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
                 {
-                    Console.WriteLine($"Invalid file extension: {extension}");
                     return BadRequest(new { message = "Invalid file type. Only JPG, JPEG, PNG, and GIF are allowed." });
                 }
 
-                // Create a unique file name
+                // Generate a unique file name for the full-size image
                 var fileName = $"{Guid.NewGuid()}{extension}";
                 var imagesPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "articles");
-                
+                var filePath = Path.Combine(imagesPath, fileName);
+
                 // Ensure the directory exists
                 if (!Directory.Exists(imagesPath))
                 {
-                    Console.WriteLine($"Creating directory: {imagesPath}");
                     Directory.CreateDirectory(imagesPath);
                 }
-                
-                var filePath = Path.Combine(imagesPath, fileName);
-                Console.WriteLine($"Saving file to: {filePath}");
 
-                // Save the file
-                using (var stream = new FileStream(filePath, FileMode.Create))
+                // Generate a unique file name for the thumbnail
+                var thumbnailFileName = $"{Path.GetFileNameWithoutExtension(fileName)}_thumb.jpeg";
+                var thumbnailPath = Path.Combine(imagesPath, thumbnailFileName);
+
+                // Load the image using ImageSharp's Image.LoadAsync
+                using (var stream = file.OpenReadStream())
                 {
-                    await file.CopyToAsync(stream);
+                    // Load the image asynchronously
+                    using (var image = await Image.LoadAsync(stream))
+                    {
+                        // Save the original image
+                        await image.SaveAsync(filePath);
+
+                        // Create a thumbnail by resizing the image
+                        // Use a different resampler for better quality if needed (e.g., Lanczos)
+                        image.Mutate(x => x.Resize(new ResizeOptions
+                        {
+                            Size = new Size(400, 250),
+                            Mode = ResizeMode.Crop // Use Crop to maintain aspect ratio
+                        }));
+
+                        // Save the thumbnail as a JPEG to the new path
+                        await image.SaveAsync(thumbnailPath, new JpegEncoder());
+                    }
                 }
 
-                // Return the file URL
-                var fileUrl = $"/images/articles/{fileName}";
+                // Return the URL of the thumbnail
+                var fileUrl = $"/images/articles/{thumbnailFileName}";
                 var fullUrl = $"{Request.Scheme}://{Request.Host}{fileUrl}";
-                Console.WriteLine($"File uploaded successfully. URL: {fileUrl}");
-                return Ok(new { 
+
+                return Ok(new
+                {
                     fileUrl = fileUrl,
                     fullUrl = fullUrl
                 });
