@@ -128,6 +128,7 @@ namespace LocationDeco.API.Controllers
             reservationEntity.Status = ReservationStatus.EnAttente;
             reservationEntity.CreatedAt = DateTime.UtcNow;
             reservationEntity.IsActive = true;
+            reservationEntity.Remarques = reservation.Remarques;
 
             _context.Reservations.Add(reservationEntity);
             await _context.SaveChangesAsync();
@@ -163,44 +164,114 @@ namespace LocationDeco.API.Controllers
             return CreatedAtAction(nameof(GetReservation), new { id = reservationEntity.Id }, reservationDto);
         }
 
-        // PUT: api/Reservations/5
-        [HttpPut("{id}")]
-        public async Task<IActionResult> PutReservation(int id, Reservation reservation)
+       // PUT: api/Reservations/5
+[HttpPut("{id}")]
+public async Task<IActionResult> PutReservation(int id, ReservationCreateDto reservation)
+{
+    // Find existing reservation with related data
+    var existingReservation = await _context.Reservations
+        .Include(r => r.ReservationItems)
+        .FirstOrDefaultAsync(r => r.Id == id);
+
+    if (existingReservation == null || !existingReservation.IsActive)
+    {
+        return NotFound();
+    }
+
+    // Validate reservation dates
+    if (reservation.StartDate > reservation.EndDate)
+    {
+        return BadRequest("Start date must be before end date");
+    }
+
+    // Calculate total price based on reservation items
+    decimal totalPrice = 0;
+    if (reservation.ReservationItems != null && reservation.ReservationItems.Any())
+    {
+        var days = (reservation.EndDate - reservation.StartDate).Days + 1;
+        if (days == 0) days = 1; // Minimum 1 day
+
+        foreach (var item in reservation.ReservationItems)
         {
-            if (id != reservation.Id)
+            var article = await _context.Articles.FindAsync(item.ArticleId);
+            if (article == null || !article.IsActive)
             {
-                return BadRequest();
+                return BadRequest($"Article with ID {item.ArticleId} not found");
             }
 
-            var existingReservation = await _context.Reservations.FindAsync(id);
-            if (existingReservation == null || !existingReservation.IsActive)
+            // Check availability (excluding current reservation items)
+            var reservedQuantity = await _context.ReservationItems
+                .Where(ri => ri.ArticleId == item.ArticleId)
+                .Where(ri => ri.ReservationId != id) // Exclude current reservation
+                .Where(ri => ri.Reservation.StartDate <= reservation.EndDate &&
+                           ri.Reservation.EndDate >= reservation.StartDate &&
+                           ri.Reservation.Status != ReservationStatus.Annulee &&
+                           ri.Reservation.IsActive)
+                .SumAsync(ri => ri.Quantity);
+
+            var availableQuantity = article.QuantityTotal - reservedQuantity;
+            if (availableQuantity < item.Quantity)
             {
-                return NotFound();
+                return BadRequest($"Not enough quantity available for article {article.Name}. Available: {availableQuantity}, Requested: {item.Quantity}");
             }
 
-            // Only allow status updates for existing reservations
-            existingReservation.Status = reservation.Status;
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!ReservationExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
-
-            return NoContent();
+            item.UnitPrice = article.PricePerDay ?? 0;
+            totalPrice += item.UnitPrice * item.Quantity * days;
         }
+    }
 
-        // DELETE: api/Reservations/5
+    // Update reservation properties
+    existingReservation.ClientId = reservation.ClientId;
+    existingReservation.StartDate = reservation.StartDate;
+    existingReservation.EndDate = reservation.EndDate;
+    existingReservation.TotalPrice = totalPrice;
+    existingReservation.Remarques = reservation.Remarques;
+    // Note: Keep existing Status, CreatedAt, and IsActive unchanged
+    // existingReservation.UpdatedAt = DateTime.UtcNow; // Add this if you have UpdatedAt field
+
+    // Remove existing reservation items
+    if (existingReservation.ReservationItems != null && existingReservation.ReservationItems.Any())
+    {
+        _context.ReservationItems.RemoveRange(existingReservation.ReservationItems);
+    }
+
+    // Create new ReservationItems
+    if (reservation.ReservationItems != null && reservation.ReservationItems.Any())
+    {
+        foreach (var item in reservation.ReservationItems)
+        {
+            var reservationItemEntity = new ReservationItem
+            {
+                ReservationId = existingReservation.Id,
+                ArticleId = item.ArticleId,
+                Quantity = item.Quantity,
+                UnitPrice = item.UnitPrice,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.ReservationItems.Add(reservationItemEntity);
+        }
+    }
+
+    try
+    {
+        await _context.SaveChangesAsync();
+    }
+    catch (DbUpdateConcurrencyException)
+    {
+        if (!ReservationExists(id))
+        {
+            return NotFound();
+        }
+        else
+        {
+            throw;
+        }
+    }
+
+    return NoContent();
+}
+
+   // DELETE: api/Reservations/5
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteReservation(int id)
         {
@@ -383,6 +454,7 @@ namespace LocationDeco.API.Controllers
                 TotalPrice = reservation.TotalPrice,
                 CreatedAt = reservation.CreatedAt,
                 IsActive = reservation.IsActive,
+                Notes = reservation.Remarques,
                 Client = reservation.Client != null ? new ClientDto
                 {
                     Id = reservation.Client.Id,
