@@ -20,9 +20,6 @@ namespace LocationDeco.API.DTOs
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal TotalPrice { get; set; }
-        
-        public string? Remarques { get; set; }
-        
         public virtual ICollection<ReservationItemCreateDto> ReservationItems { get; set; } = new List<ReservationItemCreateDto>();
 
     }
@@ -42,7 +39,7 @@ namespace LocationDeco.API.DTOs
         public decimal TotalPrice { get; set; }
         public DateTime CreatedAt { get; set; }
         public bool IsActive { get; set; }
-        public string? Remarques { get; set; }
+        public string? Notes { get; set; }
 
         // Navigation properties
         public ClientDto? Client { get; set; }

@@ -128,7 +128,6 @@ namespace LocationDeco.API.Controllers
             reservationEntity.Status = ReservationStatus.EnAttente;
             reservationEntity.CreatedAt = DateTime.UtcNow;
             reservationEntity.IsActive = true;
-            reservationEntity.Remarques = reservation.Remarques;
 
             _context.Reservations.Add(reservationEntity);
             await _context.SaveChangesAsync();
@@ -384,7 +383,6 @@ namespace LocationDeco.API.Controllers
                 TotalPrice = reservation.TotalPrice,
                 CreatedAt = reservation.CreatedAt,
                 IsActive = reservation.IsActive,
-                Remarques = reservation.Remarques,
                 Client = reservation.Client != null ? new ClientDto
                 {
                     Id = reservation.Client.Id,
