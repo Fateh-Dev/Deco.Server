@@ -83,10 +83,7 @@ namespace LocationDeco.API.Controllers
                 return BadRequest("Start date must be before end date");
             }
 
-            if (reservation.StartDate < DateTime.Today)
-            {
-                return BadRequest("Start date cannot be in the past");
-            }
+            // Removed past date validation to allow reservations with past dates
 
             // Calculate total price based on reservation items
             decimal totalPrice = 0;
@@ -131,6 +128,7 @@ namespace LocationDeco.API.Controllers
             reservationEntity.Status = ReservationStatus.EnAttente;
             reservationEntity.CreatedAt = DateTime.UtcNow;
             reservationEntity.IsActive = true;
+            reservationEntity.Remarques = reservation.Remarques;
 
             _context.Reservations.Add(reservationEntity);
             await _context.SaveChangesAsync();
@@ -386,6 +384,7 @@ namespace LocationDeco.API.Controllers
                 TotalPrice = reservation.TotalPrice,
                 CreatedAt = reservation.CreatedAt,
                 IsActive = reservation.IsActive,
+                Remarques = reservation.Remarques,
                 Client = reservation.Client != null ? new ClientDto
                 {
                     Id = reservation.Client.Id,

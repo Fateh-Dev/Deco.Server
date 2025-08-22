@@ -33,6 +33,8 @@ namespace LocationDeco.API.Models
         
         public bool IsActive { get; set; } = true;
         
+        public string? Remarques { get; set; }
+        
         // Navigation properties
         [JsonIgnore]
         public Client? Client { get; set; } = null!;
