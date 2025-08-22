@@ -4,6 +4,17 @@ using LocationDeco.API.Models;
 
 namespace LocationDeco.API.DTOs
 {
+    public class ArticleAvailabilityDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public decimal? PricePerDay { get; set; }
+        public int QuantityTotal { get; set; }
+        public int QuantityAvailable { get; set; }
+        public CategoryDto? Category { get; set; }
+    }
+
     public class ReservationCreateDto
     {
         public int Id { get; set; }

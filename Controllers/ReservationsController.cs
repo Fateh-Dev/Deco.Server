@@ -287,6 +287,71 @@ public async Task<IActionResult> PutReservation(int id, ReservationCreateDto res
             return NoContent();
         }
 
+        // GET: api/Reservations/articles/availability
+        [HttpGet("articles/availability")]
+        public async Task<ActionResult<IEnumerable<ArticleAvailabilityDto>>> GetArticlesAvailability([FromQuery] DateTime startDate, [FromQuery] DateTime endDate)
+        {
+            // Validate dates
+            if (startDate > endDate)
+            {
+                return BadRequest("Start date must be before end date");
+            }
+
+            // Get all articles
+            var articles = await _context.Articles
+                .Include(a => a.Category)
+                .Where(a => a.IsActive)
+                .ToListAsync();
+
+            var result = new List<ArticleAvailabilityDto>();
+
+            foreach (var article in articles)
+            {
+                // Calculate reserved quantity for each day in the range
+                var dailyReservedQuantities = new Dictionary<DateTime, int>();
+                var currentDate = startDate.Date;
+
+                while (currentDate <= endDate.Date)
+                {
+                    // Get all reservations that include this date
+                    var reservedQuantity = await _context.ReservationItems
+                        .Where(ri => ri.ArticleId == article.Id)
+                        .Where(ri => ri.Reservation.StartDate <= currentDate &&
+                                   ri.Reservation.EndDate >= currentDate &&
+                                   ri.Reservation.Status != ReservationStatus.Annulee &&
+                                   ri.Reservation.IsActive)
+                        .SumAsync(ri => ri.Quantity);
+
+                    dailyReservedQuantities[currentDate] = reservedQuantity;
+                    currentDate = currentDate.AddDays(1);
+                }
+
+                // Find the maximum reserved quantity across all days
+                int maxReservedQuantity = dailyReservedQuantities.Any() ? dailyReservedQuantities.Values.Max() : 0;
+                
+                // Calculate available quantity (minimum available across the date range)
+                int availableQuantity = article.QuantityTotal - maxReservedQuantity;
+                if (availableQuantity < 0) availableQuantity = 0;
+
+                result.Add(new ArticleAvailabilityDto
+                {
+                    Id = article.Id,
+                    Name = article.Name,
+                    Description = article.Description,
+                    PricePerDay = article.PricePerDay,
+                    QuantityTotal = article.QuantityTotal,
+                    QuantityAvailable = availableQuantity,
+                    Category = article.Category != null ? new CategoryDto
+                    {
+                        Id = article.Category.Id,
+                        Name = article.Category.Name
+                    } : null
+                });
+            }
+
+            return Ok(result);
+        }
+
         // GET: api/Reservations/calendar/{year}/{month}
         [HttpGet("calendar/{year}/{month}")]
         public async Task<ActionResult<object>> GetCalendarData(int year, int month)
