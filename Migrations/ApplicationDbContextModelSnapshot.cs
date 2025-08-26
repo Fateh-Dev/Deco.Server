@@ -387,6 +387,14 @@ namespace LocationDeco.API.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<byte[]>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<byte[]>("PasswordSalt")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasMaxLength(20)

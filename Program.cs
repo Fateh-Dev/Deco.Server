@@ -4,6 +4,11 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.IO;
+using LocationDeco.API.auth;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+using LocationDeco.API.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +22,23 @@ if (string.IsNullOrWhiteSpace(connectionString))
 // 2️⃣ EF Core + SQLite
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(connectionString));
+
+// Register AuthService
+builder.Services.AddSingleton<AuthService>();
+
+// Add JWT Authentication
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]))
+        };
+    });
 
 // 3️⃣ Controllers + Swagger
 builder.Services.AddControllers()
@@ -89,6 +111,7 @@ app.MapGet("/debug/files", () =>
 });
 
 // 🔑 Auth
+app.UseAuthentication();
 app.UseAuthorization();
 
 // 1️⃣0️⃣ Controllers
@@ -113,6 +136,24 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
+
+    // Seed default admin user
+    var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
+    if (!db.Users.Any(u => u.Name == "admin"))
+    {
+        authService.CreatePasswordHash("123456**-", out var hash, out var salt);
+        db.Users.Add(new User
+        {
+            Name = "admin",
+            Email = "admin@admin.com",
+            Phone = "0000000000",
+            PasswordHash = hash,
+            PasswordSalt = salt,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        db.SaveChanges();
+    }
 }
 
 app.Run();
