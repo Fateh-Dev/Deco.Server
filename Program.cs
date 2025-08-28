@@ -135,7 +135,7 @@ app.MapFallbackToFile("index.html");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    db.Database.Migrate();
+    // db.Database.Migrate();
 
     // Seed default admin user
     var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
