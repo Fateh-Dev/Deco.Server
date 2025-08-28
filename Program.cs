@@ -42,7 +42,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 // 3️⃣ Controllers + Swagger
 builder.Services.AddControllers()
-    .AddJsonOptions(options => 
+    .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     });
@@ -137,11 +137,11 @@ using (var scope = app.Services.CreateScope())
 {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    
+
     try
     {
         logger.LogInformation("🔄 Initializing database...");
-        
+
         // Ensure database directory exists
         var dbDir = Path.GetDirectoryName(absolutePath);
         if (!string.IsNullOrEmpty(dbDir) && !Directory.Exists(dbDir))
@@ -149,7 +149,7 @@ using (var scope = app.Services.CreateScope())
             Directory.CreateDirectory(dbDir);
             logger.LogInformation($"📁 Created database directory: {dbDir}");
         }
-        
+
         // Create database and tables if they don't exist
         var created = await db.Database.EnsureCreatedAsync();
         if (created)
@@ -160,20 +160,20 @@ using (var scope = app.Services.CreateScope())
         {
             logger.LogInformation("ℹ️ Database already exists");
         }
-        
+
         // Alternative: Use migrations if you have them
         // await db.Database.MigrateAsync();
-        
+
         // Seed default admin user
         var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
-        
+
         // Check if Users table exists and has any admin user
         var hasAdminUser = await db.Users.AnyAsync(u => u.Name == "admin");
-        
+
         if (!hasAdminUser)
         {
             logger.LogInformation("👤 Creating default admin user...");
-            
+
             authService.CreatePasswordHash("123456**-", out var hash, out var salt);
             db.Users.Add(new User
             {
@@ -185,7 +185,7 @@ using (var scope = app.Services.CreateScope())
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
             });
-            
+
             await db.SaveChangesAsync();
             logger.LogInformation("✅ Admin user created successfully");
         }
@@ -193,7 +193,7 @@ using (var scope = app.Services.CreateScope())
         {
             logger.LogInformation("ℹ️ Admin user already exists");
         }
-        
+
         logger.LogInformation("🚀 Database initialization completed successfully");
     }
     catch (Exception ex)
