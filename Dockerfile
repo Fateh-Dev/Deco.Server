@@ -10,6 +10,8 @@ RUN dotnet restore "LocationDeco.API.csproj"
 
 # Copy everything else and build
 COPY . .
+
+# Build and publish the application
 RUN dotnet publish "LocationDeco.API.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 # =========================
@@ -18,7 +20,7 @@ RUN dotnet publish "LocationDeco.API.csproj" -c Release -o /app/publish /p:UseAp
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 
-# Install SQLite (if needed at runtime)
+# Install SQLite and Entity Framework tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
     && rm -rf /var/lib/apt/lists/*
@@ -26,15 +28,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy published files
 COPY --from=build /app/publish .
 
-# Make sure DB folder exists and is writable
-RUN mkdir -p /app/Data && chmod 777 /app/Data
+# Create database directory with proper permissions
+RUN mkdir -p /app/Data && \
+    chmod 755 /app/Data && \
+    chown -R app:app /app/Data
 
-# Environment
+# Create a non-root user for security
+RUN groupadd -r app && useradd -r -g app app
+RUN chown -R app:app /app
+
+# Environment variables
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Production
+ENV ConnectionStrings__DefaultConnection="Data Source=/app/Data/LocationDeco.db"
 
-# Expose the port Koyeb will map
+# Switch to non-root user
+USER app
+
+# Expose the port
 EXPOSE 5000
 
-# Run the app
+# Health check (optional but recommended)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+# Run the application
 ENTRYPOINT ["dotnet", "LocationDeco.API.dll"]

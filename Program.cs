@@ -123,6 +123,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     Predicate = r => r.Tags.Contains("ready")
 });
 app.MapGet("/", () => "Hello from .NET on Koyeb!");
+
 // 1️⃣2️⃣ DB Info for Debug
 var dbFilePath = connectionString.Replace("Data Source=", "");
 var absolutePath = Path.GetFullPath(dbFilePath);
@@ -131,28 +132,74 @@ Console.WriteLine($"📂 SQLite DB path: {absolutePath}");
 // 1️⃣3️⃣ Serve Angular SPA
 app.MapFallbackToFile("index.html");
 
-// 1️⃣4️⃣ Apply EF Core Migrations on Startup
+// 1️⃣4️⃣ Apply EF Core Migrations on Startup - FIXED VERSION
 using (var scope = app.Services.CreateScope())
 {
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    // db.Database.Migrate();
-
-    // Seed default admin user
-    var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
-    if (!db.Users.Any(u => u.Name == "admin"))
+    
+    try
     {
-        authService.CreatePasswordHash("123456**-", out var hash, out var salt);
-        db.Users.Add(new User
+        logger.LogInformation("🔄 Initializing database...");
+        
+        // Ensure database directory exists
+        var dbDir = Path.GetDirectoryName(absolutePath);
+        if (!string.IsNullOrEmpty(dbDir) && !Directory.Exists(dbDir))
         {
-            Name = "admin",
-            Email = "admin@admin.com",
-            Phone = "0000000000",
-            PasswordHash = hash,
-            PasswordSalt = salt,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        });
-        db.SaveChanges();
+            Directory.CreateDirectory(dbDir);
+            logger.LogInformation($"📁 Created database directory: {dbDir}");
+        }
+        
+        // Create database and tables if they don't exist
+        var created = await db.Database.EnsureCreatedAsync();
+        if (created)
+        {
+            logger.LogInformation("✅ Database created successfully");
+        }
+        else
+        {
+            logger.LogInformation("ℹ️ Database already exists");
+        }
+        
+        // Alternative: Use migrations if you have them
+        // await db.Database.MigrateAsync();
+        
+        // Seed default admin user
+        var authService = scope.ServiceProvider.GetRequiredService<AuthService>();
+        
+        // Check if Users table exists and has any admin user
+        var hasAdminUser = await db.Users.AnyAsync(u => u.Name == "admin");
+        
+        if (!hasAdminUser)
+        {
+            logger.LogInformation("👤 Creating default admin user...");
+            
+            authService.CreatePasswordHash("123456**-", out var hash, out var salt);
+            db.Users.Add(new User
+            {
+                Name = "admin",
+                Email = "admin@admin.com",
+                Phone = "0000000000",
+                PasswordHash = hash,
+                PasswordSalt = salt,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            });
+            
+            await db.SaveChangesAsync();
+            logger.LogInformation("✅ Admin user created successfully");
+        }
+        else
+        {
+            logger.LogInformation("ℹ️ Admin user already exists");
+        }
+        
+        logger.LogInformation("🚀 Database initialization completed successfully");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "❌ Error initializing database");
+        throw; // Re-throw to prevent startup with broken database
     }
 }
 
