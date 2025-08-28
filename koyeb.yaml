@@ -1,0 +1,48 @@
+# Koyeb deployment configuration
+version: '2.0'
+
+# Define the application
+name: locationdeco-app
+
+# Define the service
+services:
+  - name: locationdeco-api
+    # Use the Dockerfile in the LocationDeco.API directory
+    build:
+      dockerfile: ./Dockerfile
+    # Port that the application listens on (must match your ASPNETCORE_URLS)
+    ports:
+      - port: 5000
+        http_path: /
+    # Environment variables
+    env:
+      - name: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - name: ASPNETCORE_URLS
+        value: http://0.0.0.0:5000
+    # Resource allocation (adjust based on your needs)
+    resources:
+      cpu: 1
+      memory: 1024
+    # Auto-scaling configuration (adjust as needed)
+    scaling:
+      min: 1
+      max: 3
+    # Health checks
+    healthcheck:
+      http:
+        path: /health
+        port: 5000
+        scheme: http
+      initial_delay: 30
+      period: 10
+      success_threshold: 1
+      timeout: 5
+    # Auto-deploy from GitHub (uncomment and configure if using GitHub)
+    # github:
+    #   repository: your-github-username/your-repo-name
+    #   branch: main
+    #   # Generate a personal access token with repo scope and add it as a secret in Koyeb
+    #   # Then reference it here:
+    #   # deploy_on_push: true
+    #   # access_token: {{.KOYEB_GITHUB_TOKEN}}
