@@ -122,7 +122,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 {
     Predicate = r => r.Tags.Contains("ready")
 });
-
+app.MapGet("/", () => "Hello from .NET on Koyeb!");
 // 1️⃣2️⃣ DB Info for Debug
 var dbFilePath = connectionString.Replace("Data Source=", "");
 var absolutePath = Path.GetFullPath(dbFilePath);
@@ -156,4 +156,4 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.Run();
+app.Run("http://0.0.0.0:5000");

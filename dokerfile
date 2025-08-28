@@ -1,0 +1,26 @@
+# ===========================
+# 1. Build Stage
+# ===========================
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# copy csproj and restore dependencies
+COPY *.csproj ./
+RUN dotnet restore
+
+# copy the rest of the source
+COPY . .
+RUN dotnet publish -c Release -o /app
+
+# ===========================
+# 2. Runtime Stage
+# ===========================
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+WORKDIR /app
+COPY --from=build /app .
+
+# expose the port that the app will run on
+EXPOSE 5000
+
+# run the app
+ENTRYPOINT ["dotnet", "LocationDeco.API.dll"]
